@@ -9,6 +9,10 @@ function cleanup {
 	exit 0
 }
 
+function common {
+	export CACHE_HOST=localhost:6379
+}
+
 function auth {
 	export GITHUB_CLIENT_ID=
 	export GITHUB_CLIENT_SECRET=
@@ -131,6 +135,7 @@ function gateway {
 	hackillinois-api-gateway -u &
 }
 
+common
 auth
 user
 registration

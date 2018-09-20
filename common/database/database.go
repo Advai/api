@@ -2,12 +2,17 @@ package database
 
 import (
 	"crypto/tls"
+	"gopkg.in/mgo.v2/bson"
 	"net"
+	"strings"
 	"time"
 
+	"github.com/HackIllinois/api/common/cache"
 	"github.com/HackIllinois/api/common/config"
 	"gopkg.in/mgo.v2"
 )
+
+var rcache *cache.RedisCache
 
 /*
 	Database interface exposing the methods necessary to querying, inserting, updating, upserting, and removing records
@@ -53,6 +58,10 @@ func InitMongoDatabase(host string, db_name string) (MongoDatabase, error) {
 
 	session, err := mgo.DialWithInfo(dial_info)
 
+	//create cache and connect
+	rcache = new(cache.RedisCache)
+	rcache.Connect(config.CACHE_HOST)
+
 	db := MongoDatabase{
 		global_session: session,
 		name:           db_name,
@@ -72,6 +81,24 @@ func (db MongoDatabase) GetSession() *mgo.Session {
 	Find one element matching the given query parameters
 */
 func (db MongoDatabase) FindOne(collection_name string, query interface{}, result interface{}) error {
+
+	if len(query.(bson.M)) == 1 {
+		key := collection_name
+		for _, query_value := range query.(bson.M) {
+			//puts all cache keys in collection_name:key format
+			key = strings.Join([]string{key, query_value.(string)}, ":")
+		}
+
+		json_result, err := rcache.Get(key)
+
+		if err == nil {
+			err := bson.UnmarshalJSON([]byte(json_result), result)
+			if err == nil {
+				return err
+			}
+		}
+	}
+
 	current_session := db.GetSession()
 	defer current_session.Close()
 

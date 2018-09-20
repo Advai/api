@@ -31,6 +31,8 @@ RUN touch log/access.log
 # Setup default environment variables
 ENV IS_PRODUCTION true
 
+#TODO: figure out cache host in prod
+
 ENV AUTH_SERVICE http://localhost:8002
 ENV USER_SERVICE http://localhost:8003
 ENV REGISTRATION_SERVICE http://localhost:8004
