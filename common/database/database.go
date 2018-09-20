@@ -2,7 +2,6 @@ package database
 
 import (
 	"crypto/tls"
-	"fmt"
 	"gopkg.in/mgo.v2/bson"
 	"net"
 	"strings"
