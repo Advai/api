@@ -2,6 +2,7 @@ package database
 
 import (
 	"crypto/tls"
+	"fmt"
 	"gopkg.in/mgo.v2/bson"
 	"net"
 	"strings"
@@ -82,12 +83,8 @@ func (db MongoDatabase) GetSession() *mgo.Session {
 */
 func (db MongoDatabase) FindOne(collection_name string, query interface{}, result interface{}) error {
 
-	if len(query.(bson.M)) == 1 {
-		key := collection_name
-		for _, query_value := range query.(bson.M) {
-			//puts all cache keys in collection_name:key format
-			key = strings.Join([]string{key, query_value.(string)}, ":")
-		}
+	if val, ok := query.(bson.M)["id"]; ok {
+		key := strings.Join([]string{collection_name, val.(string)}, ":")
 
 		json_result, err := rcache.Get(key)
 
