@@ -94,13 +94,14 @@ func (db MongoDatabase) FindOne(collection_name string, query interface{}, resul
 	//make buffered channel for the two values, so they wont block
 	result_chan := make(chan ReturnStruct, 2)
 	//anonymous goroutine to get cache data
-	go func(query bson.M, collection_name string, result_chan chan ReturnStruct) {
-		if val, ok := query["id"]; ok {
-			key := strings.Join([]string{collection_name, val.(string)}, ":")
+	id, ok := query.(bson.M)["id"]
+	if ok {
+		go func(id string, collection_name string, result_chan chan ReturnStruct) {
+			key := strings.Join([]string{collection_name, id}, ":")
 			json_result, err := rcache.Get(key)
 			result_chan <- ReturnStruct{json_result, err}
-		}
-	}(query.(bson.M), collection_name, result_chan)
+		}(id.(string), collection_name, result_chan)
+	}
 
 	go func(query bson.M, collection_name string, result_chan chan ReturnStruct) {
 		current_session := db.GetSession()
@@ -127,14 +128,19 @@ func (db MongoDatabase) FindOne(collection_name string, query interface{}, resul
 			}
 		}
 	}
+	if !ok {
+		return first_result.err
+	}
 	//block till second value
 	second_result := <-result_chan
-	if json, ok := second_result.result.(string); ok {
-		err := bson.UnmarshalJSON([]byte(json), result)
-		return err
-	} else {
-		err := mapstructure.Decode(second_result.result, result)
-		return err
+	if second_result.err == nil {
+		if json, ok := second_result.result.(string); ok {
+			err := bson.UnmarshalJSON([]byte(json), result)
+			return err
+		} else {
+			err := mapstructure.Decode(second_result.result, result)
+			return err
+		}
 	}
 	return second_result.err
 }
