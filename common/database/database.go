@@ -121,7 +121,10 @@ func (db MongoDatabase) FindOne(collection_name string, query interface{}, resul
 				return err
 			}
 		} else {
-			mapstructure.Decode(first_result.result, result)
+			err := mapstructure.Decode(first_result.result, result)
+			if err == nil {
+				return err
+			}
 		}
 	}
 	//block till second value
@@ -130,7 +133,8 @@ func (db MongoDatabase) FindOne(collection_name string, query interface{}, resul
 		err := bson.UnmarshalJSON([]byte(json), result)
 		return err
 	} else {
-		mapstructure.Decode(second_result.result, result)
+		err := mapstructure.Decode(second_result.result, result)
+		return err
 	}
 	return second_result.err
 }
