@@ -2,6 +2,7 @@ package database
 
 import (
 	"crypto/tls"
+	"github.com/mitchellh/mapstructure"
 	"gopkg.in/mgo.v2/bson"
 	"net"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/HackIllinois/api/common/cache"
 	"github.com/HackIllinois/api/common/config"
+	//"github.com/mitchellh/mapstructure"
 	"gopkg.in/mgo.v2"
 )
 
@@ -35,6 +37,11 @@ type Database interface {
 type MongoDatabase struct {
 	global_session *mgo.Session
 	name           string
+}
+
+type ReturnStruct struct {
+	result interface{}
+	err    error
 }
 
 /*
@@ -79,30 +86,53 @@ func (db MongoDatabase) GetSession() *mgo.Session {
 
 /*
 	Find one element matching the given query parameters
+	if err == nil {
+				err := bson.UnmarshalJSON([]byte(json_result), result)
+			}
 */
 func (db MongoDatabase) FindOne(collection_name string, query interface{}, result interface{}) error {
+	//make buffered channel for the two values, so they wont block
+	result_chan := make(chan ReturnStruct, 2)
+	//anonymous goroutine to get cache data
+	go func(query bson.M, collection_name string, result_chan chan ReturnStruct) {
+		if val, ok := query["id"]; ok {
+			key := strings.Join([]string{collection_name, val.(string)}, ":")
+			json_result, err := rcache.Get(key)
+			result_chan <- ReturnStruct{json_result, err}
+		}
+	}(query.(bson.M), collection_name, result_chan)
 
-	if val, ok := query.(bson.M)["id"]; ok {
-		key := strings.Join([]string{collection_name, val.(string)}, ":")
+	go func(query bson.M, collection_name string, result_chan chan ReturnStruct) {
+		current_session := db.GetSession()
+		defer current_session.Close()
+		collection := current_session.DB(db.name).C(collection_name)
 
-		json_result, err := rcache.Get(key)
+		var query_result interface{}
+		err := collection.Find(query).One(&query_result)
+		result_chan <- ReturnStruct{query_result, err}
+	}(query.(bson.M), collection_name, result_chan)
 
-		if err == nil {
-			err := bson.UnmarshalJSON([]byte(json_result), result)
+	//block till we get first value
+	first_result := <-result_chan
+	if first_result.result != nil && first_result.result != "" && first_result.err == nil {
+		if json, ok := first_result.result.(string); ok {
+			err := bson.UnmarshalJSON([]byte(json), result)
 			if err == nil {
 				return err
 			}
+		} else {
+			mapstructure.Decode(first_result.result, result)
 		}
 	}
-
-	current_session := db.GetSession()
-	defer current_session.Close()
-
-	collection := current_session.DB(db.name).C(collection_name)
-
-	err := collection.Find(query).One(result)
-
-	return err
+	//block till second value
+	second_result := <-result_chan
+	if json, ok := second_result.result.(string); ok {
+		err := bson.UnmarshalJSON([]byte(json), result)
+		return err
+	} else {
+		mapstructure.Decode(second_result.result, result)
+	}
+	return second_result.err
 }
 
 /*
